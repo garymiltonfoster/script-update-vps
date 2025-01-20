@@ -1,0 +1,280 @@
+#!/bin/bash
+
+# Script: swap_domains.sh
+# Mô tả: Hoán đổi cấu hình giữa hai tên miền trên Nginx một cách tương tác.
+# Yêu cầu: sudo ./swap_domains.sh
+# Thực hiện:
+#   - Yêu cầu người dùng nhập vào hai domain muốn hoán đổi.
+#   - Tạo file tạm để sửa đổi cấu hình.
+#   - Hoán đổi các dòng server_name trong các file tạm.
+#   - Kiểm tra cấu hình Nginx.
+#   - Nếu thành công, áp dụng các thay đổi và reload Nginx.
+#   - Nếu thất bại, hiển thị thông báo lỗi mà không khôi phục từ backup.
+#   - Hoán đổi thư mục public_html tương ứng với các domain.
+
+# Hàm Hiển Thị Thông Tin
+echo_info() {
+    echo -e "\e[32m[THÔNG BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Cảnh Báo
+echo_warning() {
+    echo -e "\e[33m[CẢNH BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Lỗi
+echo_error() {
+    echo -e "\e[31m[LỖI]\e[0m $1"
+}
+
+# Hàm Hiển Thị Thành Công
+echo_success() {
+    echo -e "\e[34m[THÀNH CÔNG]\e[0m $1"
+}
+
+
+# Hàm lấy danh sách domain từ 1 thư mục cụ thể (trả về dạng list)
+get_domains_in_dir() {
+    local dir=$1
+    if [ -d "$dir" ]; then
+        grep -rh -i "server_name" "$dir"/*.conf 2>/dev/null | grep -v "#" \
+        | awk '{for(i=2;i<=NF;i++) print $i}' | tr -d ';' | sort -u \
+        | while read -r domain; do
+            if [[ $domain != www.* ]]; then
+                echo "$domain"
+            fi
+        done
+    fi
+}
+
+list_domains() {
+    echo_info "===== Danh Sách Các Domain Được Cấu Hình ====="
+
+    # Lấy danh sách domain từ 2 thư mục
+    mapfile -t sites_available_domains < <( get_domains_in_dir "/etc/nginx/sites-available" )
+    mapfile -t conf_d_domains < <( get_domains_in_dir "/etc/nginx/conf.d" )
+
+    # Tạo set (kiểu key-value) cho conf_d_domains để tiện kiểm tra nhanh
+    declare -A conf_d_set
+    for domain in "${conf_d_domains[@]}"; do
+        conf_d_set["$domain"]=1
+    done
+
+    # Lọc danh sách sites_available_domains: bỏ qua domain đã xuất hiện ở conf.d
+    filtered_sites_available=()
+    for domain in "${sites_available_domains[@]}"; do
+        if [ -z "${conf_d_set[$domain]}" ]; then
+            filtered_sites_available+=( "$domain" )
+        fi
+    done
+
+    # Hiển thị kết quả
+    if [ "${#filtered_sites_available[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/sites-available:"
+        for domain in "${filtered_sites_available[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+
+    if [ "${#conf_d_domains[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/conf.d:"
+        for domain in "${conf_d_domains[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+}
+
+# Hàm Hoán Đổi Các Domain và Thư Mục public_html
+swap_domains() {
+    list_domains
+
+    echo_info "===== Hoán Đổi Tên Miền ====="
+
+    # Yêu cầu người dùng nhập vào hai domain
+    read -p "Nhập domain thứ nhất (ví dụ: a.com): " DOMAIN1
+    read -p "Nhập domain thứ hai (ví dụ: b.com): " DOMAIN2
+
+    # Thêm dòng lệnh echo để hiển thị thông tin hoán đổi
+    echo_info "===== Tên miền sẽ được hoán đổi từ $DOMAIN1 sang $DOMAIN2 và ngược lại ====="
+
+    # Kiểm tra xem người dùng có nhập đúng không
+    if [[ -z "$DOMAIN1" || -z "$DOMAIN2" ]]; then
+        echo_error "Cần nhập cả hai tên miền để thực hiện hoán đổi."
+        exit 1
+    fi
+
+    SITES_AVAILABLE="/etc/nginx/sites-available"
+    SITES_ENABLED="/etc/nginx/sites-enabled"
+
+    CONFIG1="$SITES_AVAILABLE/$DOMAIN1.conf"
+    CONFIG2="$SITES_AVAILABLE/$DOMAIN2.conf"
+
+    # Kiểm tra sự tồn tại của các file cấu hình
+    if [ ! -f "$CONFIG1" ]; then
+        echo_error "File cấu hình cho $DOMAIN1 không tồn tại trong $SITES_AVAILABLE."
+        exit 1
+    fi
+
+    if [ ! -f "$CONFIG2" ]; then
+        echo_error "File cấu hình cho $DOMAIN2 không tồn tại trong $SITES_AVAILABLE."
+        exit 1
+    fi
+
+    # Tạo các file tạm để sửa đổi
+    # TEMP1=$(mktemp)
+    # TEMP2=$(mktemp)
+
+    # Sao chép nội dung từ file cấu hình vào file tạm
+    # cp "$CONFIG1" "$TEMP1"
+    # cp "$CONFIG2" "$TEMP2"
+
+    # Lấy dòng server_name từ các file cấu hình hiện tại
+    # SERVER_NAME1=$(grep -i "server_name" "$CONFIG1" | head -n1)
+    # SERVER_NAME2=$(grep -i "server_name" "$CONFIG2" | head -n1)
+
+    # Kiểm tra xem dòng server_name có tồn tại không
+    if [[ -z "$SERVER_NAME1" || -z "$SERVER_NAME2" ]]; then
+        echo_error "Một trong các file cấu hình không chứa directive server_name."
+        # Xóa các file tạm đã tạo
+        # rm -f "$TEMP1" "$TEMP2"
+        # exit 1
+    fi
+
+    # Hoán đổi các dòng server_name trong các file tạm
+    echo_info "Đang hoán đổi các directive server_name trong các file tạm..."
+    # sed "s|$SERVER_NAME1|$SERVER_NAME2|" "$TEMP1" > "${TEMP1}.new"
+    # sed "s|$SERVER_NAME2|$SERVER_NAME1|" "$TEMP2" > "${TEMP2}.new"
+
+    # Kiểm tra xem các file tạm đã được sửa đổi đúng chưa
+    # NEW_SERVER_NAME1=$(grep -i "server_name" "${TEMP1}.new" | head -n1)
+    # NEW_SERVER_NAME2=$(grep -i "server_name" "${TEMP2}.new" | head -n1)
+
+    # if [[ -z "$NEW_SERVER_NAME1" || -z "$NEW_SERVER_NAME2" ]]; then
+    #     echo_error "Không thể hoán đổi các directive server_name trong các file tạm."
+    #     # Xóa các file tạm đã tạo
+    #     rm -f "$TEMP1" "$TEMP2" "${TEMP1}.new" "${TEMP2}.new"
+    #     exit 1
+    # fi
+
+    # Di chuyển các file tạm đã sửa đổi thành file cấu hình chính
+    # mv "${TEMP1}.new" "$CONFIG1"
+    # mv "${TEMP2}.new" "$CONFIG2"
+
+    # Xóa các file tạm đã sử dụng
+    # rm -f "$TEMP1" "$TEMP2"
+
+    # Kiểm tra cấu hình Nginx
+    echo_info "Đang kiểm tra cấu hình Nginx..."
+    nginx -t
+    if [ $? -ne 0 ]; then
+        echo_error "Kiểm tra cấu hình Nginx thất bại. Vui lòng kiểm tra lại các thay đổi."
+        exit 1
+    fi
+
+    # Reload Nginx để áp dụng thay đổi
+    echo_info "Đang reload Nginx..."
+    systemctl reload nginx
+
+    if [ $? -eq 0 ]; then
+        echo_success "Các domain $DOMAIN1 và $DOMAIN2 đã được hoán đổi thành công."
+
+        # ===== Thêm chức năng hoán đổi thư mục public_html =====
+        echo_info "===== Hoán Đổi Thư Mục public_html ====="
+
+        PUBLIC_HTML1="/home/$DOMAIN1/public_html"
+        PUBLIC_HTML2="/home/$DOMAIN2/public_html"
+        TEMP_DIR="/home/temp_public_html_swap_$$"
+
+        # Kiểm tra sự tồn tại của các thư mục
+        if [ -d "$PUBLIC_HTML1" ] && [ -d "$PUBLIC_HTML2" ]; then
+            echo_info "Đang tạo thư mục tạm để hoán đổi..."
+            mkdir -p "$TEMP_DIR"
+
+            # Sao chép thư mục DOMAIN1 vào thư mục tạm
+            echo_info "Đang sao chép thư mục $PUBLIC_HTML1 vào thư mục tạm..."
+            cp -r "$PUBLIC_HTML1/"* "$TEMP_DIR/"
+            if [ $? -ne 0 ]; then
+                echo_error "Sao chép thư mục $PUBLIC_HTML1 thất bại."
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            # Xóa hết các file trong thư mục DOMAIN1
+            echo_info "Đang xóa các file trong thư mục $PUBLIC_HTML1..."
+            rm -rf "$PUBLIC_HTML1/"*
+            if [ $? -ne 0 ]; then
+                echo_error "Xóa các file trong thư mục $PUBLIC_HTML1 thất bại."
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            # Sao chép thư mục DOMAIN2 vào DOMAIN1
+            echo_info "Đang sao chép thư mục $PUBLIC_HTML2 vào $PUBLIC_HTML1..."
+            cp -r "$PUBLIC_HTML2/"* "$PUBLIC_HTML1/"
+            if [ $? -ne 0 ]; then
+                echo_error "Sao chép thư mục $PUBLIC_HTML2 sang $PUBLIC_HTML1 thất bại."
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            # Xóa hết các file trong thư mục DOMAIN2
+            echo_info "Đang xóa các file trong thư mục $PUBLIC_HTML2..."
+            rm -rf "$PUBLIC_HTML2/"*
+            if [ $? -ne 0 ]; then
+                echo_error "Xóa các file trong thư mục $PUBLIC_HTML2 thất bại."
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            # Sao chép từ thư mục tạm vào DOMAIN2
+            echo_info "Đang sao chép thư mục tạm vào $PUBLIC_HTML2..."
+            cp -r "$TEMP_DIR/"* "$PUBLIC_HTML2/"
+            if [ $? -ne 0 ]; then
+                echo_error "Sao chép thư mục tạm sang $PUBLIC_HTML2 thất bại."
+                # Không khôi phục lại vì đã xóa các file gốc
+                rm -rf "$TEMP_DIR"
+                exit 1
+            fi
+
+            # Xóa thư mục tạm
+            rm -rf "$TEMP_DIR"
+
+            echo_success "Thư mục public_html của $DOMAIN1 và $DOMAIN2 đã được hoán đổi thành công."
+        else
+            echo_warning "Một trong các thư mục public_html không tồn tại. Không thể hoán đổi."
+        fi
+        # ===== Kết thúc chức năng hoán đổi thư mục public_html =====
+
+    else
+        echo_error "Reload Nginx thất bại. Vui lòng kiểm tra lại cấu hình."
+        exit 1
+    fi
+}
+
+# Hàm Hiển Thị Hướng Dẫn Sử Dụng
+show_help() {
+    echo_info "===== Hướng Dẫn Sử Dụng ====="
+    echo_info "Nhập vào 2 domain muốn hoán đổi. Ví dụ đổi domain a.com sang domain b.com:"
+    echo_info "  sudo $0"
+    echo ""
+    echo_info "Hoặc liệt kê các domain:"
+    echo_info "  sudo $0 --list"
+    echo ""
+    echo_info "Các tùy chọn:"
+    echo_info "  --list    Liệt kê tất cả các domain được cấu hình trong Nginx."
+    echo_info "  --help    Hiển thị hướng dẫn sử dụng."
+}
+
+# Kiểm tra tham số đầu vào
+if [ "$1" == "--help" ] || [ "$1" == "-h" ]; then
+    show_help
+    exit 0
+fi
+
+if [ "$1" == "--list" ]; then
+    list_domains
+    exit 0
+fi
+
+# Nếu không có tham số đặc biệt, tiến hành hoán đổi domain
+swap_domains

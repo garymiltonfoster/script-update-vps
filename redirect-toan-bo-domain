@@ -1,0 +1,221 @@
+#!/bin/bash
+
+echo_info() {
+    echo -e "\e[32m[THÔNG BÁO]\e[0m $1"
+}
+
+echo_warning() {
+    echo -e "\e[33m[CẢNH BÁO]\e[0m $1"
+}
+
+echo_error() {
+    echo -e "\e[31m[LỖI]\e[0m $1"
+}
+
+echo_success() {
+    echo -e "\e[34m[THÀNH CÔNG]\e[0m $1"
+}
+
+# Hàm lấy danh sách domain từ thư mục /etc/nginx/conf.d (trả về dạng list)
+get_domains_in_dir() {
+    local dir=$1
+    if [ -d "$dir" ]; then
+        grep -rh -i "server_name" "$dir"/*.conf 2>/dev/null | grep -v "#" \
+        | awk '{for(i=2;i<=NF;i++) print $i}' | tr -d ';' | sort -u \
+        | while read -r domain; do
+            if [[ $domain != www.* ]]; then
+                echo "$domain"
+            fi
+        done
+    fi
+}
+
+list_domains() {
+    echo_info "===== Danh Sách Các Domain Được Cấu Hình ====="
+
+    # Lấy danh sách domain từ thư mục /etc/nginx/conf.d
+    mapfile -t conf_d_domains < <( get_domains_in_dir "/etc/nginx/conf.d" )
+
+    if [ "${#conf_d_domains[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/conf.d:"
+        for domain in "${conf_d_domains[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+}
+
+# Hàm Kiểm Tra Sự Tồn Tại Của Các Domain
+validate_domains() {
+    local -n domains_ref=$1
+    local invalid_domains=()
+
+    for DOMAIN in "${domains_ref[@]}"; do
+        DOMAIN=$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')
+        
+        # Kiểm tra sự tồn tại của file cấu hình trong thư mục /etc/nginx/conf.d
+        CONFIG_PATH_CONF="/etc/nginx/conf.d/$DOMAIN.conf"
+        
+        if [ ! -f "$CONFIG_PATH_CONF" ]; then
+            invalid_domains+=("$DOMAIN")
+        fi
+    done
+
+    if [ ${#invalid_domains[@]} -ne 0 ]; then
+        echo_error "Các domain sau không tồn tại trong /etc/nginx/conf.d:"
+        for INVALID_DOMAIN in "${invalid_domains[@]}"; do
+            echo_error " - $INVALID_DOMAIN"
+        done
+        return 1
+    fi
+
+    return 0
+}
+
+# Hàm Cấp Phát Chứng Chỉ SSL Cho Các Domain
+obtain_ssl_certificates() {
+    if ! command -v certbot &> /dev/null; then
+        echo_info "Cài đặt AutoSSL (Certbot)..."
+        sudo snap install core --classic
+        sudo snap refresh core
+        sudo snap install --classic certbot
+        sudo ln -s /snap/bin/certbot /usr/bin/certbot
+    else
+        echo_info "Certbot đã được cài đặt, bỏ qua bước này."
+    fi
+
+    if command -v certbot &> /dev/null; then
+        # Kiểm tra xem file letsencrypt.log có tồn tại không
+        if [ -f /var/log/letsencrypt/letsencrypt.log ]; then
+            echo_info "Certbot đã được cấu hình trước đó, không cần nhập email."
+        else
+            # Register Email with Certbot
+            echo_info "Đang đăng ký email admin@$DOMAIN với Certbot..."
+            sudo certbot register -m "admin@$DOMAIN" --agree-tos --no-eff-email --non-interactive
+        fi
+    else
+        echo_info "Certbot đã được cài đặt, bỏ qua bước này."
+    fi
+
+    local domains=("$@")
+    for DOMAIN in "${domains[@]}"; do
+        DOMAIN=$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')
+        if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
+            echo_info "Đang cấp phát chứng chỉ SSL cho $DOMAIN..."
+            sudo certbot certonly --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos -m "admin@$DOMAIN" --redirect
+            if [ $? -ne 0 ]; then
+                echo_error "Cấp phát chứng chỉ SSL cho $DOMAIN thất bại. Vui lòng kiểm tra lại."
+                exit 1
+            fi
+            echo_success "Đã cấp phát chứng chỉ SSL cho $DOMAIN."
+        else
+            echo_info "Chứng chỉ SSL cho $DOMAIN đã tồn tại."
+        fi
+    done
+}
+
+# Hàm Tạo Redirect cho Các Domain
+create_redirect() {
+    # Hiển thị danh sách các domain hiện có
+    list_domains
+
+    echo_info "===== Tạo Redirect Từ Các Domain Sang Một Domain Mục Tiêu ====="
+    echo_info "===== Ví Dụ Như: Redirect Domain a.com, b.com Sang c.com ====="
+
+    # Yêu cầu người dùng nhập vào domain mục tiêu
+    while true; do
+        read -p "Nhập domain mục tiêu để redirect đến (ví dụ: c.com): " TARGET_DOMAIN
+        TARGET_DOMAIN=$(echo "$TARGET_DOMAIN" | tr '[:upper:]' '[:lower:]')  # Chuyển domain sang chữ thường
+
+        # Kiểm tra sự tồn tại của domain mục tiêu trong thư mục /etc/nginx/conf.d
+        TARGET_CONFIG="/etc/nginx/conf.d/$TARGET_DOMAIN.conf"
+        if [ ! -f "$TARGET_CONFIG" ]; then
+            echo_error "Domain mục tiêu $TARGET_DOMAIN không tồn tại trong /etc/nginx/conf.d."
+            # Lấy danh sách các domain hiện có
+            AVAILABLE_DOMAINS=$(get_domain_list)
+            echo_info "Vui lòng chọn một trong các domain sau: $AVAILABLE_DOMAINS"
+            continue
+        fi
+
+        break  # Domain mục tiêu hợp lệ
+    done
+
+    # Yêu cầu người dùng nhập vào các domain muốn redirect
+    while true; do
+        read -p "Nhập các domain muốn redirect (cách nhau bằng dấu phẩy, ví dụ: a.com,b.com): " DOMAINS_INPUT
+        # Xóa khoảng trắng và tách các domain thành mảng
+        IFS=',' read -r -a DOMAINS_ARRAY <<< "$(echo "$DOMAINS_INPUT" | tr -d ' ')"
+
+        # Kiểm tra xem người dùng đã nhập ít nhất một domain chưa
+        if [ ${#DOMAINS_ARRAY[@]} -eq 0 ]; then
+            echo_error "Cần nhập ít nhất một domain để thực hiện redirect."
+            continue
+        fi
+
+        # Kiểm tra sự tồn tại của các domain
+        validate_domains DOMAINS_ARRAY
+        if [ $? -eq 0 ]; then
+            break  # Tất cả các domain hợp lệ
+        else
+            # Thay đổi thông báo từ cảnh báo thành thông tin với danh sách các domain hợp lệ
+            AVAILABLE_DOMAINS=$(get_domain_list)
+            echo_info "Vui lòng chọn một trong các domain sau: $AVAILABLE_DOMAINS"
+        fi
+    done
+
+    # Cấp phát chứng chỉ SSL cho các domain nguồn nếu chưa có
+    echo_info "===== Cấp Phát Chứng Chỉ SSL Cho Các Domain Nguồn ====="
+    obtain_ssl_certificates "${DOMAINS_ARRAY[@]}"
+
+    # Tạo cấu hình redirect cho từng domain
+    for DOMAIN in "${DOMAINS_ARRAY[@]}"; do
+        DOMAIN=$(echo "$DOMAIN" | tr '[:upper:]' '[:lower:]')  # Chuyển domain sang chữ thường
+        echo_info "Đang tạo cấu hình redirect cho $DOMAIN sang $TARGET_DOMAIN..."
+
+        # Đặt tên file cấu hình
+        CONFIG_FILE="/etc/nginx/conf.d/$DOMAIN.conf"
+
+        # Kiểm tra nếu file cấu hình đã tồn tại
+        if [ -f "$CONFIG_FILE" ]; then
+            # Tạo thư mục backup nếu chưa tồn tại
+            BACKUP_DIR="/etc/nginx/conf.d/backup"
+            [ ! -d "$BACKUP_DIR" ] && mkdir -p "$BACKUP_DIR"
+
+            # Backup tệp cấu hình hiện có
+            TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+            cp "$CONFIG_FILE" "$BACKUP_DIR/$DOMAIN-$TIMESTAMP.conf"
+            echo_info "Đã backup tệp cấu hình hiện có tại $BACKUP_DIR/$DOMAIN-$TIMESTAMP.conf"
+        fi
+
+        # Tạo hoặc ghi đè cấu hình redirect cho HTTP và HTTPS
+        cat > "$CONFIG_FILE" <<EOL
+server {
+    listen 80;
+    server_name $DOMAIN www.$DOMAIN;
+    return 301 https://\$host\$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name $DOMAIN www.$DOMAIN;
+    ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    return 301 https://$TARGET_DOMAIN\$request_uri;
+}
+EOL
+
+        # Cấp phát chứng chỉ SSL cho domain nếu cần
+        obtain_ssl_certificates "$DOMAIN"
+
+        # Reload lại Nginx để áp dụng thay đổi
+        nginx -t
+        sudo systemctl reload nginx
+        sudo systemctl restart nginx
+
+        echo_success "Đã redirect thành công domain: $DOMAIN đến $TARGET_DOMAIN."
+    done
+}
+
+# Chạy script chính
+create_redirect
