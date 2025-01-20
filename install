@@ -1,0 +1,39 @@
+#!/bin/bash
+#######################################################
+# HocVPS Script Installer v4.0.0
+#######################################################
+
+
+# Tải hai file vào thư mục /etc/hocvps/menu/
+echo "Đang tải các file vào /etc/hocvps/menu/..."
+curl -o /etc/hocvps/menu/gan-doi-domain https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/gan-doi-domain
+curl -o /etc/hocvps/menu/redirect-toan-bo-domain https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/redirect-toan-bo-domain
+
+# Kiểm tra và tạo thư mục /etc/hocvps/menu nếu chưa tồn tại
+if [ ! -d "/etc/hocvps/menu" ]; then
+    echo "Thư mục /etc/hocvps/menu không tồn tại. Đang tạo thư mục..."
+    mkdir -p /etc/hocvps/menu
+fi
+
+# Cấp quyền thực thi cho các file trong menu
+chmod +x /etc/hocvps/menu/gan-doi-domain
+chmod +x /etc/hocvps/menu/redirect-toan-bo-domain
+
+# Tải file hocvps và ghi đè lên file đã tồn tại trong /bin/hocvps
+echo "Đang tải file hocvps và ghi đè..."
+curl -o /bin/hocvps https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/hocvps
+
+# Cấp quyền thực thi cho file hocvps
+chmod +x /bin/hocvps
+
+echo "Các file đã được tải, ghi đè và cấp quyền thực thi thành công!"
+
+# Kiểm tra xem có phải server đã cài đặt HocVPS Script hay chưa
+if [ -f /etc/hocvps/scripts.conf ]; then
+    echo "========================================================================="
+    echo "Server/VPS của bạn đã được cài sẵn HocVPS Script"
+    echo "Hãy sử dụng lệnh 'hocvps' để truy cập menu quản lý"
+    echo "Chào tạm biệt!"
+    echo "========================================================================="
+    exit
+fi
