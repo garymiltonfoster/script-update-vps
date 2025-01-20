@@ -1,0 +1,114 @@
+#!/bin/bash
+
+. /etc/hocvps/scripts.conf
+
+clear
+
+printf "=========================================================================\n"
+printf "                             HocVPS Menu\n"
+printf "=========================================================================\n"
+
+prompt="Nhập vào lựa chọn menu của bạn:"
+options=("Liệt Kê Domain"
+         "Thêm Domain"
+         "Gán Đổi Domain"                   # Mục mới 3
+         "Redirect Toàn Bộ Domain"          # Mục mới 4
+         "Sao Lưu Code"
+         "Sao Lưu Data"
+         "Tự Động Sao Lưu"
+         "Tắt Tự Động Sao Lưu"
+         "Tạo Database"
+         "Xóa Database"
+         "Đổi Password VPS"
+         "Đổi Port Admin"
+         "Thêm Park Domain"
+         "Thêm Redirect Domain"
+         "Phân Quyền Webserver"
+         "Nâng Cấp Server"
+         "Firewall CSF"
+         "Cài Đặt SSL Let's Encrypt"
+         "Cài Đặt PaidSSL"
+         "Xóa Cài Đặt SSL (Sử dụng http)"
+         "Backup lên Drive"
+         "Thay Đổi Version PHP"
+         "Thoát")
+
+echo "$prompt"
+
+select opt in "${options[@]}"; do
+    case "$REPLY" in
+    1) 
+        /etc/hocvps/menu/liet-ke-domain
+        ;;
+    2) 
+        /etc/hocvps/menu/them-domain
+        ;;
+    3) 
+        /etc/hocvps/menu/gan-doi-domain
+        ;;
+    4) 
+        /etc/hocvps/menu/redirect-toan-bo-domain
+        ;;
+    5) 
+        /etc/hocvps/menu/sao-luu-code
+        ;;
+    6) 
+        /etc/hocvps/menu/sao-luu-data
+        ;;
+    7) 
+        /etc/hocvps/menu/tu-dong-sao-luu
+        ;;
+    8) 
+        /etc/hocvps/menu/tat-tu-dong-sao-luu
+        ;;
+    9) 
+        /etc/hocvps/menu/tao-database
+        ;;
+    10) 
+        /etc/hocvps/menu/xoa-database
+        ;;
+    11) 
+        /etc/hocvps/menu/doi-pass-vps
+        ;;
+    12) 
+        /etc/hocvps/menu/doi-port-admin
+        ;;
+    13) 
+        /etc/hocvps/menu/park-domain
+        ;;
+    14) 
+        /etc/hocvps/menu/forward-domain
+        ;;
+    15) 
+        /etc/hocvps/menu/phan-quyen-webserver
+        ;;
+    16) 
+        /etc/hocvps/menu/nang-cap-server
+        ;;
+    17) 
+        /etc/hocvps/menu/firewall-csf
+        ;;
+    18) 
+        /etc/hocvps/menu/let-sencrypt
+        ;;
+    19) 
+        /etc/hocvps/menu/paidssl
+        ;;
+    20) 
+        /etc/hocvps/menu/xoa-caidat-le
+        ;;
+    21) 
+        /etc/hocvps/menu/rclone
+        ;;
+    22) 
+        /etc/hocvps/menu/select-version-php
+        ;;
+    23) 
+        printf "\nChào tạm biệt!\nHẹn gặp lại bạn tại HocVPS!\n\n"
+        break
+        ;;
+    *)
+        echo "Lựa chọn không hợp lệ, vui lòng nhập lại theo số thứ tự trong danh sách."
+        ;;
+    esac
+done
