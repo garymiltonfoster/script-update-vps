@@ -26,6 +26,7 @@ fi
 echo "Đang tải các file vào /etc/hocvps/menu/..."
 curl -o /etc/hocvps/menu/gan-doi-domain https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/gan-doi-domain
 curl -o /etc/hocvps/menu/redirect-toan-bo-domain https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/redirect-toan-bo-domain
+curl -o /etc/hocvps/menu/auto-ssl https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/auto-ssl
 
 # Kiểm tra và tạo thư mục /etc/hocvps/menu nếu chưa tồn tại
 if [ ! -d "/etc/hocvps/menu" ]; then
@@ -36,6 +37,7 @@ fi
 # Cấp quyền thực thi cho các file trong menu
 chmod +x /etc/hocvps/menu/gan-doi-domain
 chmod +x /etc/hocvps/menu/redirect-toan-bo-domain
+chmod +x /etc/hocvps/menu/auto-ssl
 
 # Tải file hocvps và ghi đè lên file đã tồn tại trong /bin/hocvps
 echo "Đang tải file hocvps và ghi đè..."
