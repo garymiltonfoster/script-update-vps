@@ -49,9 +49,13 @@ echo "Các file đã được tải, ghi đè và cấp quyền thực thi thàn
 # Kiểm tra xem có phải server đã cài đặt HocVPS Script hay chưa
 if [ -f /etc/hocvps/scripts.conf ]; then
     echo "========================================================================="
-    echo "Server/VPS của bạn đã được cài sẵn HocVPS Script"
+    echo "Server/VPS của bạn đã được cập nhật lên bản mới nhất"
     echo "Hãy sử dụng lệnh 'hocvps' để truy cập menu quản lý"
+    echo "Danh sách menu mới: "
+    echo "1. Gán Đổi Domain             # Mục mới 3"
+    echo "2. Redirect Toàn Bộ Domain    # Mục mới 4"
     echo "Chào tạm biệt!"
     echo "========================================================================="
     exit
 fi
+
