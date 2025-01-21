@@ -3,6 +3,24 @@
 # HocVPS Script Installer v4.0.0
 #######################################################
 
+if [ -f /etc/hocvps/scripts.conf ]; then
+    echo "========================================================================="
+    echo "Server/VPS của bạn đã được cài sẵn HocVPS Script"
+    echo "========================================================================="
+fi
+
+echo "Đang nâng cấp Server/VPS của bạn"
+
+if ! command -v certbot &> /dev/null; then
+    echo_info "Cài đặt AutoSSL (Certbot)..."
+    sudo snap install core --classic
+    sudo snap refresh core
+    sudo snap install --classic certbot
+    sudo ln -s /snap/bin/certbot /usr/bin/certbot
+else
+    echo_info "Certbot đã được cài đặt, bỏ qua bước này."
+fi
+
 
 # Tải hai file vào thư mục /etc/hocvps/menu/
 echo "Đang tải các file vào /etc/hocvps/menu/..."
