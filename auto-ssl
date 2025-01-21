@@ -1,0 +1,134 @@
+#!/bin/bash
+
+# Source the HocVPS configuration
+. /etc/hocvps/scripts.conf
+
+# Display Header
+printf "=========================================================================\n"
+printf "                             Auto SSL\n"
+printf "=========================================================================\n"
+
+echo_info() {
+    echo -e "\e[32m[THÔNG BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Cảnh Báo
+echo_warning() {
+    echo -e "\e[33m[CẢNH BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Lỗi
+echo_error() {
+    echo -e "\e[31m[LỖI]\e[0m $1"
+}
+
+# Hàm Hiển Thị Thành Công
+echo_success() {
+    echo -e "\e[34m[THÀNH CÔNG]\e[0m $1"
+}
+
+
+# Hàm lấy danh sách domain từ 1 thư mục cụ thể (trả về dạng list)
+get_domains_in_dir() {
+    local dir=$1
+    if [ -d "$dir" ]; then
+        grep -rh -i "server_name" "$dir"/*.conf 2>/dev/null | grep -v "#" \
+        | awk '{for(i=2;i<=NF;i++) print $i}' | tr -d ';' | sort -u \
+        | while read -r domain; do
+            if [[ $domain != www.* ]]; then
+                echo "$domain"
+            fi
+        done
+    fi
+}
+
+list_domains() {
+    echo_info "===== Danh Sách Các Domain Được Cấu Hình ====="
+
+    # Lấy danh sách domain từ 2 thư mục
+    mapfile -t sites_available_domains < <( get_domains_in_dir "/etc/nginx/sites-available" )
+    mapfile -t conf_d_domains < <( get_domains_in_dir "/etc/nginx/conf.d" )
+
+    # Tạo set (kiểu key-value) cho conf_d_domains để tiện kiểm tra nhanh
+    declare -A conf_d_set
+    for domain in "${conf_d_domains[@]}"; do
+        conf_d_set["$domain"]=1
+    done
+
+    # Lọc danh sách sites_available_domains: bỏ qua domain đã xuất hiện ở conf.d
+    filtered_sites_available=()
+    for domain in "${sites_available_domains[@]}"; do
+        if [ -z "${conf_d_set[$domain]}" ]; then
+            filtered_sites_available+=( "$domain" )
+        fi
+    done
+
+    # Hiển thị kết quả
+    if [ "${#filtered_sites_available[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/sites-available:"
+        for domain in "${filtered_sites_available[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+
+    if [ "${#conf_d_domains[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/conf.d:"
+        for domain in "${conf_d_domains[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+}
+
+list_domains
+# Prompt user for the domain to install SSL
+echo -n "Nhập vào domain bạn muốn cài (gia hạn) SSL rồi ấn [ENTER]: "
+read -r domain
+
+# Check if the domain is the main server domain
+if [ "$domain" = "$server_name" ]; then
+    echo "Bạn không thể cài SSL cho domain chính trên server !!!!"
+    echo "Chào tạm biệt...!"
+    exit 1
+fi
+
+# Define the path for Nginx site configurations in the new location
+nginx_conf="/etc/nginx/conf.d/$domain.conf"
+
+# Check if the Nginx configuration file exists
+if [ -f "$nginx_conf" ]; then
+    # Confirm with the user before proceeding
+    read -r -p "Đã phát hiện thay $domain, bạn có chắc muốn cài SSL cho nó không ? [y/N] " response
+    case "$response" in
+        [yY][eE][sS] | [yY])
+            echo "Đang cài đặt SSL cho $domain..."
+            
+            # Obtain SSL certificate using Certbot with Nginx plugin
+            sudo certbot --nginx -d "$domain" --noninteractive --agree-tos --email "$email_ssl" --redirect
+            
+            # Check if Certbot was successful
+            if [ $? -eq 0 ]; then
+                echo "Cài đặt SSL cho $domain thành công!"
+                
+                # Reload Nginx to apply changes
+                sudo systemctl reload nginx
+                sudo systemctl restart nginx
+                
+                
+                # Display success message
+                echo "Bạn có thể truy cập https://$domain để xác nhận SSL đã được cài đặt."
+            else
+                echo "Đã xảy ra lỗi trong quá trình cài đặt SSL cho $domain."
+                exit 1
+            fi
+            ;;
+        *)
+            echo "Hủy cài đặt SSL cho $domain."
+            echo "Chào tạm biệt....!"
+            exit 0
+            ;;
+    esac
+else
+    echo "Không phát hiện thấy $domain, vui lòng kiểm tra lại!"
+    echo "Chào tạm biệt....!"
+    exit 1
+fi
