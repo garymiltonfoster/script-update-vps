@@ -54,6 +54,8 @@ if [ -f /etc/hocvps/scripts.conf ]; then
     echo "Danh sách menu mới: "
     echo "1. Gán Đổi Domain             # Mục mới 3"
     echo "2. Redirect Toàn Bộ Domain    # Mục mới 4"
+    echo "3. Xóa Domain                 # Mục mới 5"
+    echo "4. Cài Đặt SSL (Mới)          # Mục mới 6"
     echo "Chào tạm biệt!"
     echo "========================================================================="
     exit
