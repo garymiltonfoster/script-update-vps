@@ -13,6 +13,7 @@ options=("Liệt Kê Domain"
          "Thêm Domain"
          "Gán Đổi Domain"                   # Mục mới 3
          "Redirect Toàn Bộ Domain"          # Mục mới 4
+         "Xóa Domain"                       # Mục mới 5
          "Sao Lưu Code"
          "Sao Lưu Data"
          "Tự Động Sao Lưu"
@@ -50,60 +51,63 @@ select opt in "${options[@]}"; do
         /etc/hocvps/menu/redirect-toan-bo-domain
         ;;
     5) 
-        /etc/hocvps/menu/sao-luu-code
+        /etc/hocvps/menu/xoa-domain              # Xóa domain
         ;;
     6) 
-        /etc/hocvps/menu/sao-luu-data
+        /etc/hocvps/menu/sao-luu-code
         ;;
     7) 
-        /etc/hocvps/menu/tu-dong-sao-luu
+        /etc/hocvps/menu/sao-luu-data
         ;;
     8) 
-        /etc/hocvps/menu/tat-tu-dong-sao-luu
+        /etc/hocvps/menu/tu-dong-sao-luu
         ;;
     9) 
-        /etc/hocvps/menu/tao-database
+        /etc/hocvps/menu/tat-tu-dong-sao-luu
         ;;
     10) 
-        /etc/hocvps/menu/xoa-database
+        /etc/hocvps/menu/tao-database
         ;;
     11) 
-        /etc/hocvps/menu/doi-pass-vps
+        /etc/hocvps/menu/xoa-database
         ;;
     12) 
-        /etc/hocvps/menu/doi-port-admin
+        /etc/hocvps/menu/doi-pass-vps
         ;;
     13) 
-        /etc/hocvps/menu/park-domain
+        /etc/hocvps/menu/doi-port-admin
         ;;
     14) 
-        /etc/hocvps/menu/forward-domain
+        /etc/hocvps/menu/park-domain
         ;;
     15) 
-        /etc/hocvps/menu/phan-quyen-webserver
+        /etc/hocvps/menu/forward-domain
         ;;
     16) 
-        /etc/hocvps/menu/nang-cap-server
+        /etc/hocvps/menu/phan-quyen-webserver
         ;;
     17) 
-        /etc/hocvps/menu/firewall-csf
+        /etc/hocvps/menu/nang-cap-server
         ;;
     18) 
-        /etc/hocvps/menu/let-sencrypt
+        /etc/hocvps/menu/firewall-csf
         ;;
     19) 
-        /etc/hocvps/menu/paidssl
+        /etc/hocvps/menu/let-sencrypt
         ;;
     20) 
-        /etc/hocvps/menu/xoa-caidat-le
+        /etc/hocvps/menu/paidssl
         ;;
     21) 
-        /etc/hocvps/menu/rclone
+        /etc/hocvps/menu/xoa-caidat-le
         ;;
     22) 
-        /etc/hocvps/menu/select-version-php
+        /etc/hocvps/menu/rclone
         ;;
     23) 
+        /etc/hocvps/menu/select-version-php
+        ;;
+    24) 
         printf "\nChào tạm biệt!\nHẹn gặp lại bạn tại HocVPS!\n\n"
         break
         ;;
