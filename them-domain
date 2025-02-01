@@ -1,0 +1,392 @@
+#!/bin/bash
+
+# Hàm Hiển Thị Thông Tin
+echo_info() {
+    echo -e "\e[32m[THÔNG BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Cảnh Báo
+echo_warning() {
+    echo -e "\e[33m[CẢNH BÁO]\e[0m $1"
+}
+
+# Hàm Hiển Thị Lỗi
+echo_error() {
+    echo -e "\e[31m[LỖI]\e[0m $1"
+}
+
+# Hàm Hiển Thị Thành Công
+echo_success() {
+    echo -e "\e[34m[THÀNH CÔNG]\e[0m $1"
+}
+
+# Lấy địa chỉ IP của server
+server_ip=$(hostname -I | awk '{print $1}')
+
+# Nạp file cấu hình
+CONFIG_FILE="/etc/hocvps/scripts.conf"
+if [ -f "$CONFIG_FILE" ]; then
+    . "$CONFIG_FILE"
+else
+    echo "Không tìm thấy file cấu hình $CONFIG_FILE. Hãy kiểm tra lại!"
+    exit 1
+fi
+
+# Hàm kiểm tra DNS và cài đặt SSL
+check_dns_and_install_ssl() {
+    echo "Bắt đầu cài đặt SSL cho $domain..."
+
+    # Cài đặt SSL với certbot
+    sudo certbot --nginx -d "$domain" --noninteractive
+
+    if [ $? -eq 0 ]; then
+        echo "Cài đặt SSL thành công cho $domain."
+    else
+        echo "Lỗi: Cài đặt SSL thất bại. Hãy kiểm tra lại."
+        exit 1
+    fi
+}
+
+# Hàm lấy danh sách domain từ 1 thư mục cụ thể (trả về dạng list)
+get_domains_in_dir() {
+    local dir=$1
+    if [ -d "$dir" ]; then
+        grep -rh -i "server_name" "$dir"/*.conf 2>/dev/null | grep -v "#" \
+        | awk '{for(i=2;i<=NF;i++) print $i}' | tr -d ';' | sort -u \
+        | while read -r domain; do
+            if [[ $domain != www.* ]]; then
+                echo "$domain"
+            fi
+        done
+    fi
+}
+
+list_domains() {
+    echo_info "===== Danh Sách Các Domain Được Cấu Hình ====="
+
+    # Lấy danh sách domain từ 2 thư mục
+    mapfile -t sites_available_domains < <( get_domains_in_dir "/etc/nginx/sites-available" )
+    mapfile -t conf_d_domains < <( get_domains_in_dir "/etc/nginx/conf.d" )
+
+    # Tạo set (kiểu key-value) cho conf_d_domains để tiện kiểm tra nhanh
+    declare -A conf_d_set
+    for domain in "${conf_d_domains[@]}"; do
+        conf_d_set["$domain"]=1
+    done
+
+    # Lọc danh sách sites_available_domains: bỏ qua domain đã xuất hiện ở conf.d
+    filtered_sites_available=()
+    for domain in "${sites_available_domains[@]}"; do
+        if [ -z "${conf_d_set[$domain]}" ]; then
+            filtered_sites_available+=( "$domain" )
+        fi
+    done
+
+    # Hiển thị kết quả
+    if [ "${#filtered_sites_available[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/sites-available:"
+        for domain in "${filtered_sites_available[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+
+    if [ "${#conf_d_domains[@]}" -gt 0 ]; then
+        echo_info "Từ /etc/nginx/conf.d:"
+        for domain in "${conf_d_domains[@]}"; do
+            echo_info " - $domain"
+        done
+    fi
+}
+
+# In thông tin mariadb_root_password để kiểm tra
+echo "Mật khẩu root của MariaDB: $mariadb_root_password"
+
+printf "=========================================================================\n"
+printf "                             Thêm Domain\n"
+printf "=========================================================================\n"
+
+list_domains
+
+echo -n "Nhập vào domain bạn muốn thêm rồi nhấn [ENTER]: "
+read -r domain
+
+# Kiểm tra input domain
+if [ -z "$domain" ]; then
+    echo "Bạn nhập sai, vui lòng nhập chính xác."
+    exit 1
+fi
+
+# Kiểm tra xem domain đã tồn tại chưa
+if [ -f "/etc/nginx/conf.d/$domain.conf" ] || [ -f "/etc/nginx/sites-available/$domain.conf" ]; then
+    echo "Phát hiện thấy $domain đã tồn tại trên hệ thống."
+    echo "Chào tạm biệt...!"
+    exit 1
+fi
+
+# Tự động phát hiện phiên bản PHP-FPM
+detect_php_version() {
+    # Tìm tất cả các socket PHP-FPM
+    php_fpm_socks=(/var/run/php/php*-fpm.sock)
+
+    if [ ${#php_fpm_socks[@]} -eq 0 ]; then
+        echo "Không tìm thấy PHP-FPM nào được cài đặt. Vui lòng cài đặt PHP-FPM trước khi tiếp tục."
+        exit 1
+    fi
+
+    # Lấy phiên bản PHP mới nhất
+    php_version=$(echo "${php_fpm_socks[@]}" | grep -oP 'php\K[0-9.]+(?=-fpm.sock)' | sort -V | tail -n1)
+
+    if [ -z "$php_version" ]; then
+        echo "Không thể xác định phiên bản PHP-FPM. Vui lòng kiểm tra lại."
+        exit 1
+    fi
+
+    echo "Phiên bản PHP-FPM được sử dụng: $php_version"
+}
+
+detect_php_version
+
+# Tạo thư mục cho domain
+mkdir -p "/home/$domain/public_html"
+mkdir -p "/home/$domain/logs"
+chmod 755 "/home/$domain/logs"
+sudo chmod -R 775 "/home/$domain/public_html/"
+sudo chown -R www-data:www-data /home/$domain/public_html
+
+# Tạo trang index.php mới
+cat > "/home/$domain/public_html/index.php" <<END
+<?php
+\$domain = getenv('DOMAIN_NAME') ?: 'localhost';
+?>
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chào mừng đến với <?php echo htmlspecialchars(\$domain); ?></title>
+</head>
+<body>
+    <h1>Chào mừng bạn đến với <?php echo htmlspecialchars(\$domain); ?></h1>
+    <p>Trang web của bạn đã được tạo thành công!</p>
+</body>
+</html>
+END
+
+
+sudo chmod 644 "/home/$domain/public_html/index.php"
+
+# Tạo Nginx server block cho domain chính
+NGINX_CONF="/etc/nginx/sites-available/$domain.conf"
+sudo tee "$NGINX_CONF" > /dev/null <<END
+server {
+    listen 80;
+    server_name www.$domain $domain;
+
+    root /home/$domain/public_html;
+    index index.php;
+
+    access_log /home/$domain/logs/access.log;
+    error_log /home/$domain/logs/error.log;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location = /wp-sitemap.xml {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+    
+    location = /sitemap_index.xml {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    # Static Files
+    location ~* \.(jpg|jpeg|gif|png|css|js|ico|html|xml|txt)\$ {
+        expires 30d;
+        access_log off;
+    }
+
+    # Deny access to .htaccess and hidden files
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+
+    # Nginx Status
+    location /nginx_status {
+        stub_status on;
+        allow 127.0.0.1;
+        allow $server_ip;
+        deny all;
+    }
+
+    # PHP Processing
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php${php_version}-fpm.sock;
+    }
+
+    # PHP Status
+    location /php_status {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php${php_version}-fpm.sock;
+        allow 127.0.0.1;
+        allow $server_ip;
+        deny all;
+    }
+}
+END
+
+# Kích hoạt cấu hình Nginx mới
+sudo ln -sf "/etc/nginx/sites-available/$domain.conf" "/etc/nginx/sites-enabled/"
+
+# Hỏi người dùng có muốn cài WordPress không
+read -r -p "Bạn có muốn cài WordPress cho $domain không? [y/N] " response
+case "$response" in
+    [yY][eE][sS]|[yY])
+        echo "Bắt đầu cài đặt WordPress..."
+
+
+        # Tạo mật khẩu và prefix bảo mật
+        wordpress_password=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9')
+        secure_table_prefix=$(openssl rand -base64 6 | tr -dc 'a-z0-9')
+
+        # Tạo tên database hợp lệ
+        db_name="wordpress_${domain//./_}"
+
+
+    # Kiểm tra xem WordPress đã được tải trước đó chưa
+    if [ -d "wordpress" ] || [ -f "wp-config.php" ]; then
+        echo_warning "WordPress đã được cài đặt hoặc các thư mục đã tồn tại. Đang dọn dẹp trước khi tiếp tục..."
+
+        sudo rm -rf wordpress wp-admin wp-content wp-includes wp-config.php
+
+        if [ $? -ne 0 ]; then
+            echo_error "Không thể xóa các thư mục WordPress cũ. Hãy kiểm tra lại quyền truy cập."
+            exit 1
+        fi
+    fi
+
+            # Kiểm tra xem người dùng đã tồn tại chưa
+        user_exists=$(mysql -u root -p"$mariadb_root_password" -e "SELECT COUNT(*) FROM mysql.user WHERE user='wordpress_$domain' AND host='localhost';" | tail -n1)
+
+        if [ "$user_exists" -gt 0 ]; then
+            echo_info "Người dùng wordpress_$domain đã tồn tại. Đang xóa người dùng cũ..."
+            
+            mysql -u root -p"$mariadb_root_password" -e "DROP USER 'wordpress_$domain'@'localhost';"
+            
+            echo_info "Đã xóa người dùng wordpress_$domain."
+        fi
+
+        # Kiểm tra xem cơ sở dữ liệu đã tồn tại chưa
+        db_exists=$(mysql -u root -p"$mariadb_root_password" -e "SHOW DATABASES LIKE '$db_name';" | grep "$db_name" | wc -l)
+
+        if [ "$db_exists" -gt 0 ]; then
+            echo_info "Cơ sở dữ liệu $db_name đã tồn tại. Đang xóa cơ sở dữ liệu cũ..."
+            
+            mysql -u root -p"$mariadb_root_password" -e "DROP DATABASE \`$db_name\`;"
+
+            echo_info "Đã xóa cơ sở dữ liệu $db_name."
+        fi
+
+
+
+        echo "Tạo database và người dùng cho WordPress..."
+        echo "==============================================="
+
+        # Xoá database và người dùng nếu chúng đã tồn tại
+        mysql -u root -p"$mariadb_root_password" -e "
+            DROP DATABASE IF EXISTS \`$db_name\`;
+            DROP USER IF EXISTS 'wordpress_$domain'@'localhost';
+            CREATE DATABASE \`$db_name\`;
+            CREATE USER 'wordpress_$domain'@'localhost' IDENTIFIED BY '$wordpress_password';
+            GRANT ALL PRIVILEGES ON \`$db_name\`.* TO 'wordpress_$domain'@'localhost';
+            FLUSH PRIVILEGES;
+        "
+
+        # Kiểm tra trạng thái thực thi
+        if [ $? -eq 0 ]; then
+            echo "Database và người dùng đã được tạo lại thành công!"
+            echo "Tên database WP: $db_name"
+            echo "Tên người dùng WP: wordpress_$domain"
+            echo "Mật khẩu của database Wordpress: $wordpress_password"
+        else
+            echo "Đã xảy ra lỗi khi tạo database hoặc người dùng. Hãy kiểm tra lại thông tin và thử lại!"
+            exit 1
+        fi
+
+        echo "================================================"
+        echo "Tải và cài đặt WordPress..."
+        cd "/home/$domain/public_html" || exit
+
+        # Tải và giải nén WordPress
+        wget -q https://wordpress.org/latest.tar.gz
+        tar zxf latest.tar.gz
+        mv wordpress/* ./
+        rm -rf wordpress latest.tar.gz
+
+        # Tải các khóa bảo mật
+        wget -q -O /tmp/wp.keys https://api.wordpress.org/secret-key/1.1/salt/
+
+        # Cấu hình wp-config.php
+        cp wp-config-sample.php wp-config.php
+        sed -i "s/database_name_here/$db_name/" wp-config.php
+        sed -i "s/username_here/wordpress_$domain/" wp-config.php
+        sed -i "s/password_here/$wordpress_password/" wp-config.php
+        sed -i "s/wp_/${secure_table_prefix}_/" wp-config.php
+        sed -i '/#@-/r /tmp/wp.keys' wp-config.php
+        sed -i "/#@+/,/#@-/d" wp-config.php
+
+        # Dọn dẹp các file không cần thiết
+        rm -f /tmp/wp.keys wp-config-sample.php
+
+        # Đặt quyền phù hợp
+        chmod -R 755 "/home/$domain/public_html"
+        chown -R www-data:www-data "/home/$domain/public_html"
+
+        echo "Cài đặt WordPress hoàn tất! Truy cập http://$domain để hoàn tất cấu hình."
+        ;;
+    *)
+        echo "Bỏ qua cài đặt WordPress..."
+        ;;
+esac
+
+# Gọi hàm kiểm tra và cài đặt SSL
+read -r -p "Bạn có muốn cài SSL cho $domain không? [y/N]. Hãy chắc chắn rằng bạn đã tạo bản ghi DNS cho tên miền này. Nếu chưa có, bạn hãy nhập N: " response_ssl
+case "$response_ssl" in
+    [yY][eE][sS]|[yY])
+        check_dns_and_install_ssl
+        ;;
+    *)
+        echo "Bỏ qua cài đặt SSL..."
+        ;;
+esac
+
+
+# Kiểm tra và điều chỉnh quyền của các file SSL
+
+if [ -d "/etc/letsencrypt/live/$domain/" ]; then
+    sudo chmod 644 /etc/letsencrypt/live/$domain/fullchain.pem
+    sudo chmod 600 /etc/letsencrypt/live/$domain/privkey.pem
+else
+    echo_warning "Không tìm thấy thư mục SSL cho $domain."
+fi
+
+# Kiểm tra cấu hình Nginx và reload nếu đúng
+if sudo nginx -t; then
+    sudo systemctl reload nginx
+    sudo systemctl restart nginx
+
+    echo "$domain đã được thêm thành công vào server!"
+else
+    echo "Lỗi cấu hình Nginx. Vui lòng kiểm tra lại."
+    exit 1
+fi
+
+echo_info "Upload code lên /home/$domain/public_html/"
+echo_info "Xem logs của $domain tại /home/$domain/logs"
+
+sudo chown -R www-data:www-data /home/*/public_html
+sudo chown -R www-data:www-data /home/*/private_html
+sudo chown -R www-data:www-data /var/lib/php
+
+echo_success "Chúc mừng bạn đã thêm domain thành công!"
