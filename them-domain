@@ -200,6 +200,14 @@ server {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
+    location ~ \.html$ {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
+    location ~ \.xml {
+        try_files \$uri \$uri/ /index.php?\$args;
+    }
+
     # Static Files
     location ~* \.(jpg|jpeg|gif|png|css|js|ico|html|xml|txt)\$ {
         expires 30d;
