@@ -200,11 +200,7 @@ server {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
-    location ~ \.html$ {
-        try_files \$uri \$uri/ /index.php?\$args;
-    }
-
-    location ~ \.xml {
+    location ~ \.(html|xml)$ {
         try_files \$uri \$uri/ /index.php?\$args;
     }
 
