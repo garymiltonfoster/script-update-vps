@@ -11,15 +11,15 @@ fi
 
 echo "Đang nâng cấp Server/VPS của bạn"
 
-if ! command -v certbot &> /dev/null; then
-    echo "Cài đặt AutoSSL (Certbot)..."
-    sudo snap install core --classic
-    sudo snap refresh core
-    sudo snap install --classic certbot
-    sudo ln -s /snap/bin/certbot /usr/bin/certbot
-else
-    echo "Certbot đã được cài đặt, bỏ qua bước này."
-fi
+# if ! command -v certbot &> /dev/null; then
+#     echo "Cài đặt AutoSSL (Certbot)..."
+#     sudo snap install core --classic
+#     sudo snap refresh core
+#     sudo snap install --classic certbot
+#     sudo ln -s /snap/bin/certbot /usr/bin/certbot
+# else
+#     echo "Certbot đã được cài đặt, bỏ qua bước này."
+# fi
 
 
 # Tải hai file vào thư mục /etc/hocvps/menu/
@@ -36,17 +36,17 @@ if [ ! -d "/etc/hocvps/menu" ]; then
 fi
 
 # Cấp quyền thực thi cho các file trong menu
-chmod +x /etc/hocvps/menu/gan-doi-domain
-chmod +x /etc/hocvps/menu/redirect-toan-bo-domain
-chmod +x /etc/hocvps/menu/auto-ssl
+# chmod +x /etc/hocvps/menu/gan-doi-domain
+# chmod +x /etc/hocvps/menu/redirect-toan-bo-domain
+# chmod +x /etc/hocvps/menu/auto-ssl
 chmod +x /etc/hocvps/menu/them-domain
 
 # Tải file hocvps và ghi đè lên file đã tồn tại trong /bin/hocvps
-echo "Đang tải file hocvps và ghi đè..."
+# echo "Đang tải file hocvps và ghi đè..."
 #curl -o /bin/hocvps https://raw.githubusercontent.com/garymiltonfoster/script-update-vps/refs/heads/main/hocvps
 
 # Cấp quyền thực thi cho file hocvps
-chmod +x /bin/hocvps
+# chmod +x /bin/hocvps
 
 echo "Các file đã được tải, ghi đè và cấp quyền thực thi thành công!"
 
